@@ -1,7 +1,6 @@
 import { useEffect, useRef, useCallback } from 'react'
 import type { AggregatedMood } from '../ml/LocalAggregator'
 
-// VITE_API_URL이 있으면 https→wss 자동 변환, 없으면 로컬
 const WS_BASE = import.meta.env['VITE_WS_URL']
   ?? (import.meta.env['VITE_API_URL']
     ? import.meta.env['VITE_API_URL'].replace('https://', 'wss://').replace('http://', 'ws://') + '/api/mood'
@@ -17,6 +16,9 @@ export function useMoodReporter(
   const wsRef = useRef<WebSocket | null>(null)
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const onMoodUpdate = useRef<((mood: { valence: number; arousal: number; hue: number }) => void) | null>(null)
+  // isSpeaking을 ref로 관리 → WebSocket 재연결 없이 최신값 사용
+  const isSpeakingRef = useRef(isSpeaking)
+  useEffect(() => { isSpeakingRef.current = isSpeaking }, [isSpeaking])
 
   const setOnMoodUpdate = useCallback(
     (cb: (mood: { valence: number; arousal: number; hue: number }) => void) => {
@@ -53,7 +55,7 @@ export function useMoodReporter(
         valenceAvg: mood.valence,
         arousalAvg: mood.arousal,
         samples: mood.sampleCount,
-        isSpeaking,
+        isSpeaking: isSpeakingRef.current, // ref로 최신값 사용
       }))
     }, REPORT_INTERVAL_MS)
 
@@ -61,7 +63,8 @@ export function useMoodReporter(
       if (timerRef.current) clearInterval(timerRef.current)
       ws.close()
     }
-  }, [meetingId, participantId, getMood, isSpeaking])
+  // isSpeaking 제거 → STT 토글해도 WS 재연결 안 함
+  }, [meetingId, participantId, getMood])
 
   return { setOnMoodUpdate }
 }
