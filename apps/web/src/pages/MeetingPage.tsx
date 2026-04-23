@@ -22,7 +22,6 @@ import { useMoodEngine } from '../hooks/useMoodEngine'
 import { useMoodReporter } from '../hooks/useMoodReporter'
 import { useSpeechRecognition } from '../hooks/useSpeechRecognition'
 import { MoodBar } from '../components/MoodBar'
-import { ExpressionDebugOverlay } from '../components/ExpressionDebugOverlay'
 import { ChatPanel } from '../components/ChatPanel'
 
 export function MeetingPage() {
@@ -113,7 +112,7 @@ function MeetingRoom({
 
   const model = useMemo(() => new FaceApiModel(), [])
   const aggregator = useMemo(() => new LocalAggregator(), [])
-  const { status, result, error, start, stop } = useMoodEngine(hiddenVideoRef, model)
+  const { result, start, stop } = useMoodEngine(hiddenVideoRef, model)
 
   const { finalTranscripts, listening, supported, start: startSpeech, stop: stopSpeech } =
     useSpeechRecognition('ko-KR')
@@ -287,8 +286,6 @@ function MeetingRoom({
       {/* ML 추론용 숨겨진 video */}
       <video ref={hiddenVideoRef} muted playsInline style={{ display: 'none' }} />
 
-      {/* 디버그 오버레이 */}
-      <ExpressionDebugOverlay result={result} status={status} error={error} />
     </div>
   )
 }
