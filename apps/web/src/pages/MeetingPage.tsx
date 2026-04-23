@@ -23,11 +23,12 @@ import { useMoodReporter } from '../hooks/useMoodReporter'
 import { useSpeechRecognition } from '../hooks/useSpeechRecognition'
 import { MoodBar } from '../components/MoodBar'
 import { ExpressionDebugOverlay } from '../components/ExpressionDebugOverlay'
+import { ChatPanel } from '../components/ChatPanel'
 
 export function MeetingPage() {
   const { meetingId } = useParams<{ meetingId: string }>()
   const navigate = useNavigate()
-  const { token, livekitUrl, displayName, participantId, setConnection } = useMeetingStore()
+  const { token, livekitUrl, displayName, participantId, role, setConnection } = useMeetingStore()
   const { settings } = useDeviceSettings()
 
   useEffect(() => {
@@ -37,8 +38,8 @@ export function MeetingPage() {
         const deviceId = getDeviceId()
         api
           .joinMeeting(meetingId, savedName, deviceId)
-          .then(({ token: t, livekitUrl: url, participantId: pid }) =>
-            setConnection(t, url, pid),
+          .then(({ token: t, livekitUrl: url, participantId: pid, role: r }) =>
+            setConnection(t, url, pid, r),
           )
           .catch(() => navigate('/'))
       } else {
@@ -74,7 +75,12 @@ export function MeetingPage() {
       data-lk-theme="default"
       style={{ height: '100dvh', background: '#0a0a0a' }}
     >
-      <MeetingRoom meetingId={meetingId} participantId={participantId} />
+      <MeetingRoom
+        meetingId={meetingId}
+        participantId={participantId}
+        isHost={role === 'host'}
+        displayName={displayName}
+      />
       <RoomAudioRenderer />
     </LiveKitRoom>
   )
@@ -83,9 +89,13 @@ export function MeetingPage() {
 function MeetingRoom({
   meetingId,
   participantId,
+  isHost,
+  displayName,
 }: {
   meetingId: string
   participantId: string | null
+  isHost: boolean
+  displayName: string
 }) {
   const navigate = useNavigate()
   const tracks = useTracks(
@@ -96,21 +106,18 @@ function MeetingRoom({
     { onlySubscribed: false },
   )
 
-  // LiveKit 로컬 카메라 트랙 → 숨겨진 video 엘리먼트로 ML 추론
   const { localParticipant } = useLocalParticipant()
   const hiddenVideoRef = useRef<HTMLVideoElement>(null)
-  // roomMood: 서버에서 받은 타인 평균 분위기 (본인 제외)
   const [roomMood, setRoomMood] = useState<AggregatedMood | null>(null)
+  const [chatOpen, setChatOpen] = useState(false)
 
   const model = useMemo(() => new FaceApiModel(), [])
   const aggregator = useMemo(() => new LocalAggregator(), [])
   const { status, result, error, start, stop } = useMoodEngine(hiddenVideoRef, model)
 
-  // 음성 인식
   const { finalTranscripts, listening, supported, start: startSpeech, stop: stopSpeech } =
     useSpeechRecognition('ko-KR')
 
-  // 내 mood를 서버로 전송 + 타인 평균 수신
   const getMood = useCallback(() => aggregator.current(), [aggregator])
   const { setOnMoodUpdate } = useMoodReporter(meetingId, participantId, getMood, listening)
   useEffect(() => {
@@ -120,7 +127,6 @@ function MeetingRoom({
   }, [setOnMoodUpdate])
   const sentCountRef = useRef(0)
 
-  // 발화가 쌓이면 API로 저장
   useEffect(() => {
     if (!participantId) return
     const unsent = finalTranscripts.slice(sentCountRef.current)
@@ -131,7 +137,7 @@ function MeetingRoom({
     sentCountRef.current = finalTranscripts.length
   }, [finalTranscripts, meetingId, participantId])
 
-  // 회의 종료 처리
+  // 회의 종료 (호스트)
   const [ending, setEnding] = useState(false)
   const handleEndMeeting = useCallback(async () => {
     if (ending) return
@@ -143,13 +149,17 @@ function MeetingRoom({
         api.endMeeting(meetingId),
         api.generateSummary(meetingId),
       ])
-    } catch {
-      // 실패해도 요약 페이지로 이동
-    }
+    } catch { /* 실패해도 요약 페이지로 이동 */ }
     navigate(`/meeting/${meetingId}/summary`)
   }, [ending, meetingId, navigate, stop, stopSpeech])
 
-  // 로컬 카메라 트랙이 생기면 숨겨진 video에 붙이고 ML 시작
+  // 회의 나가기 (참여자)
+  const handleLeaveMeeting = useCallback(() => {
+    stopSpeech()
+    stop()
+    navigate('/')
+  }, [navigate, stop, stopSpeech])
+
   useEffect(() => {
     const camPub = localParticipant.getTrackPublication(Track.Source.Camera)
     const track = camPub?.track
@@ -167,7 +177,6 @@ function MeetingRoom({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [localParticipant.getTrackPublication(Track.Source.Camera)?.track?.sid])
 
-  // 추론 결과 → LocalAggregator (서버 전송용, MoodBar는 서버 브로드캐스트 사용)
   useEffect(() => {
     if (!result) return
     aggregator.push(result)
@@ -176,7 +185,7 @@ function MeetingRoom({
   return (
     <div className="flex flex-col h-full">
       {/* 헤더 */}
-      <header className="flex items-center justify-between px-4 py-3 border-b border-neutral-800">
+      <header className="flex items-center justify-between px-4 py-3 border-b border-neutral-800 shrink-0">
         <span className="text-white font-semibold text-sm">MoodMeet</span>
         <button
           onClick={() => navigator.clipboard.writeText(meetingId)}
@@ -201,48 +210,81 @@ function MeetingRoom({
               {listening ? '녹음 중' : '음성 인식'}
             </button>
           )}
-          <CopyLinkButton meetingId={meetingId} />
-          {/* 회의 종료 */}
+
+          {/* 채팅 버튼 */}
           <button
-            onClick={handleEndMeeting}
-            disabled={ending}
-            className="text-xs text-red-400 hover:text-red-300 transition-colors px-2 py-1 rounded border border-red-800 hover:border-red-600 disabled:opacity-50"
+            onClick={() => setChatOpen((v) => !v)}
+            title="채팅"
+            className={`text-xs px-2 py-1 rounded border transition-colors ${
+              chatOpen
+                ? 'border-blue-500 text-blue-400'
+                : 'border-neutral-700 text-neutral-400 hover:border-neutral-500 hover:text-white'
+            }`}
           >
-            {ending ? '종료 중...' : '회의 종료'}
+            💬 채팅
           </button>
+
+          <CopyLinkButton meetingId={meetingId} />
+
+          {/* 호스트: 회의 종료 / 참여자: 나가기 */}
+          {isHost ? (
+            <button
+              onClick={handleEndMeeting}
+              disabled={ending}
+              className="text-xs text-red-400 hover:text-red-300 transition-colors px-2 py-1 rounded border border-red-800 hover:border-red-600 disabled:opacity-50"
+            >
+              {ending ? '종료 중...' : '회의 종료'}
+            </button>
+          ) : (
+            <button
+              onClick={handleLeaveMeeting}
+              className="text-xs text-neutral-400 hover:text-white transition-colors px-2 py-1 rounded border border-neutral-700 hover:border-neutral-500"
+            >
+              나가기
+            </button>
+          )}
         </div>
       </header>
 
-      {/* Mood Bar — 본인 제외 참여자 평균 분위기 */}
-      <div className="px-2 pt-2">
-        <MoodBar mood={roomMood} />
-      </div>
+      {/* 본문: 비디오 영역 + 채팅 사이드바 */}
+      <div className="flex flex-1 overflow-hidden">
+        {/* 왼쪽: 비디오 + 기타 */}
+        <div className="flex flex-col flex-1 overflow-hidden">
+          {/* Mood Bar */}
+          <div className="px-2 pt-2">
+            <MoodBar mood={roomMood} />
+          </div>
 
-      {/* 발화 미리보기 */}
-      {listening && finalTranscripts.length > 0 && (
-        <div className="mx-2 mt-1 px-3 py-2 bg-neutral-900 rounded-lg border border-neutral-800">
-          <p className="text-xs text-neutral-500 mb-0.5">최근 발화</p>
-          <p className="text-xs text-neutral-300 truncate">
-            {finalTranscripts[finalTranscripts.length - 1]}
-          </p>
+          {/* 발화 미리보기 */}
+          {listening && finalTranscripts.length > 0 && (
+            <div className="mx-2 mt-1 px-3 py-2 bg-neutral-900 rounded-lg border border-neutral-800">
+              <p className="text-xs text-neutral-500 mb-0.5">최근 발화</p>
+              <p className="text-xs text-neutral-300 truncate">
+                {finalTranscripts[finalTranscripts.length - 1]}
+              </p>
+            </div>
+          )}
+
+          {/* 비디오 타일 그리드 */}
+          <div className="flex-1 overflow-hidden p-2">
+            <GridLayout tracks={tracks} style={{ height: '100%' }}>
+              <ParticipantTile />
+            </GridLayout>
+          </div>
+
+          {/* 컨트롤 바 */}
+          <div className="border-t border-neutral-800">
+            <ControlBar
+              controls={{ camera: true, microphone: true, screenShare: true, leave: false }}
+            />
+          </div>
         </div>
-      )}
 
-      {/* 비디오 타일 그리드 */}
-      <div className="flex-1 overflow-hidden p-2">
-        <GridLayout tracks={tracks} style={{ height: '100%' }}>
-          <ParticipantTile />
-        </GridLayout>
+        {/* 오른쪽: 채팅 패널 */}
+        <ChatPanel open={chatOpen} onClose={() => setChatOpen(false)} myName={displayName} />
       </div>
 
-      {/* 컨트롤 바 */}
-      <div className="border-t border-neutral-800">
-        <ControlBar
-          controls={{ camera: true, microphone: true, screenShare: true, leave: false }}
-        />
-      </div>
-
-      {/* ML 추론용 숨겨진 video (화면에 안 보임) */}
+      {/* ML 추론용 숨겨진 video */}
       <video ref={hiddenVideoRef} muted playsInline style={{ display: 'none' }} />
 
       {/* 디버그 오버레이 */}

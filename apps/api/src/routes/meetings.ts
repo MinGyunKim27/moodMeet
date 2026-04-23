@@ -82,6 +82,7 @@ export async function meetingsRoute(app: FastifyInstance) {
     return {
       meeting: { id: meetingId, title: title ?? null, status: 'scheduled' },
       participantId,
+      role: 'host',
       token,
       livekitUrl: LIVEKIT_URL,
       joinUrl: `${APP_URL}/meeting/${meetingId}`,
@@ -136,7 +137,7 @@ export async function meetingsRoute(app: FastifyInstance) {
     })
 
     const token = await buildLiveKitToken(meetingId, participantId, displayName, 'member')
-    return { token, livekitUrl: LIVEKIT_URL, participantId }
+    return { token, livekitUrl: LIVEKIT_URL, participantId, role: 'member' }
   })
 
   // POST /api/meetings/:id/utterances — 발화 저장
@@ -181,14 +182,19 @@ export async function meetingsRoute(app: FastifyInstance) {
   app.post<{ Params: { id: string } }>('/:id/summary', async (req, reply) => {
     const { id: meetingId } = req.params
 
-    // 미팅 정보 + 발화 목록 조회
-    const [meetingRows, utteranceRows] = await Promise.all([
+    // 미팅 정보 + 발화 목록 + 참여자 목록 조회
+    const [meetingRows, utteranceRows, participantRows] = await Promise.all([
       sql`SELECT title, started_at, ended_at FROM meetings WHERE id = ${meetingId}`,
       sql`
         SELECT u.transcript, p.display_name, u.started_at
         FROM utterances u JOIN participants p ON p.id = u.ptc_id
         WHERE u.meeting_id = ${meetingId}
         ORDER BY u.started_at ASC
+      `,
+      sql`
+        SELECT display_name, role FROM participants
+        WHERE meeting_id = ${meetingId}
+        ORDER BY role DESC
       `,
     ])
 
@@ -198,7 +204,9 @@ export async function meetingsRoute(app: FastifyInstance) {
     const summaryMd = await generateSummary(
       meeting['title'] as string | null,
       meeting['started_at'] as Date | null,
+      meeting['ended_at'] as Date | null,
       utteranceRows as unknown as { transcript: string; display_name: string; started_at: Date }[],
+      participantRows as unknown as { display_name: string; role: string }[],
     )
 
     await sql`

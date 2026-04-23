@@ -43,13 +43,13 @@ export interface UtteranceItem {
 
 export const api = {
   createMeeting: (displayName: string, deviceId: string, title?: string) =>
-    request<{ meeting: { id: string }; participantId: string; token: string; livekitUrl: string; joinUrl: string }>('/meetings', {
+    request<{ meeting: { id: string }; participantId: string; role: 'host'; token: string; livekitUrl: string; joinUrl: string }>('/meetings', {
       method: 'POST',
       body: JSON.stringify({ displayName, deviceId, title }),
     }),
 
   joinMeeting: (meetingId: string, displayName: string, deviceId: string) =>
-    request<{ token: string; livekitUrl: string; participantId: string }>(
+    request<{ token: string; livekitUrl: string; participantId: string; role: 'member' }>(
       `/meetings/${meetingId}/join`,
       { method: 'POST', body: JSON.stringify({ displayName, deviceId }) },
     ),

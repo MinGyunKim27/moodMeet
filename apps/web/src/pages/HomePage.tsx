@@ -25,9 +25,9 @@ export function HomePage() {
     setError(null)
     try {
       const deviceId = getDeviceId()
-      const { meeting, participantId, token, livekitUrl } = await api.createMeeting(name.trim(), deviceId, title.trim() || undefined)
+      const { meeting, participantId, role, token, livekitUrl } = await api.createMeeting(name.trim(), deviceId, title.trim() || undefined)
       setDisplayName(name.trim())
-      setConnection(token, livekitUrl, participantId)
+      setConnection(token, livekitUrl, participantId, role)
       navigate(`/meeting/${meeting.id}`)
     } catch (err) {
       setError(err instanceof Error ? err.message : '오류가 발생했습니다')
@@ -43,9 +43,9 @@ export function HomePage() {
     setError(null)
     try {
       const deviceId = getDeviceId()
-      const { token, livekitUrl, participantId } = await api.joinMeeting(meetingCode.trim(), name.trim(), deviceId)
+      const { token, livekitUrl, participantId, role } = await api.joinMeeting(meetingCode.trim(), name.trim(), deviceId)
       setDisplayName(name.trim())
-      setConnection(token, livekitUrl, participantId)
+      setConnection(token, livekitUrl, participantId, role)
       navigate(`/meeting/${meetingCode.trim()}`)
     } catch (err) {
       setError(err instanceof Error ? err.message : '오류가 발생했습니다')
