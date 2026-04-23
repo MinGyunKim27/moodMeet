@@ -178,7 +178,13 @@ function MeetingRoom({
       {/* 헤더 */}
       <header className="flex items-center justify-between px-4 py-3 border-b border-neutral-800">
         <span className="text-white font-semibold text-sm">MoodMeet</span>
-        <span className="text-neutral-400 text-xs font-mono truncate max-w-[160px]">{meetingId}</span>
+        <button
+          onClick={() => navigator.clipboard.writeText(meetingId)}
+          title="클릭하면 ID 복사"
+          className="text-neutral-400 text-xs font-mono hover:text-white transition-colors truncate max-w-[260px]"
+        >
+          {meetingId}
+        </button>
         <div className="flex items-center gap-2">
           {/* STT 버튼 */}
           {supported && (
