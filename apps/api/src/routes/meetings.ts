@@ -120,9 +120,13 @@ export async function meetingsRoute(app: FastifyInstance) {
         VALUES (${userId}, ${`device_${deviceId.slice(0, 8)}@moodmeet.local`}, ${displayName}, 'ko', ${deviceId})
         ON CONFLICT (email) DO UPDATE SET display_name = EXCLUDED.display_name
       `
+      // email 충돌 시 기존 userId 가져오기 (create와 동일한 패턴)
+      const existing = await tx`SELECT id FROM users WHERE device_id = ${deviceId} LIMIT 1`
+      const finalUserId = (existing[0]?.['id'] as string | undefined) ?? userId
+
       await tx`
         INSERT INTO participants (id, meeting_id, user_id, display_name, role)
-        VALUES (${participantId}, ${meetingId}, ${userId}, ${displayName}, 'member')
+        VALUES (${participantId}, ${meetingId}, ${finalUserId}, ${displayName}, 'member')
         ON CONFLICT (meeting_id, user_id) DO NOTHING
       `
       await tx`
