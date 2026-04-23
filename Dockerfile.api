@@ -1,0 +1,21 @@
+FROM node:20-alpine
+RUN corepack enable
+WORKDIR /app
+
+# 워크스페이스 루트 파일
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc tsconfig.base.json ./
+
+# API 패키지
+COPY apps/api/package.json ./apps/api/
+
+# 의존성 설치 (API만)
+RUN pnpm install --frozen-lockfile --filter @moodmeet/api
+
+# 소스 복사 & 빌드
+COPY apps/api/src ./apps/api/src
+COPY apps/api/tsconfig.json ./apps/api/
+RUN pnpm --filter @moodmeet/api build
+
+WORKDIR /app/apps/api
+EXPOSE 4000
+CMD ["node", "dist/index.js"]

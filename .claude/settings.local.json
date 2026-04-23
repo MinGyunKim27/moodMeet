@@ -1,0 +1,41 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pnpm --version)",
+      "Bash(npm install *)",
+      "Bash(pnpm install *)",
+      "Bash(npx tsc *)",
+      "Bash(pnpm add *)",
+      "Bash(npx vite *)",
+      "Bash(curl -s http://localhost:3000)",
+      "Bash(mkdir -p \"F:\\\\다운로드\\\\moodmeet\\\\apps\\\\web\\\\public\\\\models\")",
+      "Bash(curl -L -O \"https://raw.githubusercontent.com/justadudewhohacks/face-api.js/master/weights/tiny_face_detector_model-weights_manifest.json\")",
+      "Bash(curl -L -O \"https://raw.githubusercontent.com/justadudewhohacks/face-api.js/master/weights/tiny_face_detector_model-shard1\" -O \"https://raw.githubusercontent.com/justadudewhohacks/face-api.js/master/weights/face_expression_net-weights_manifest.json\" -O \"https://raw.githubusercontent.com/justadudewhohacks/face-api.js/master/weights/face_expression_net-shard1\")",
+      "Bash(curl -L -o \"face_expression_net-weights_manifest.json\" \"https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@0.22.2/weights/face_expression_net-weights_manifest.json\")",
+      "Bash(pnpm remove *)",
+      "Bash(curl -s \"https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model/\")",
+      "mcp__Claude_Preview__preview_start",
+      "Bash(cp .env.example .env)",
+      "Bash(node --import tsx/esm src/index.ts)",
+      "Bash(curl -s http://localhost:4000/health)",
+      "Bash(npx tsx *)",
+      "Bash(curl -s -X POST http://localhost:4000/api/meetings -H \"Content-Type: application/json\" -d '{\"displayName\":\"테스트\",\"title\":\"테스트\"}')",
+      "Bash(curl -s -X POST http://localhost:4000/api/meetings -H \"Content-Type: application/json\" -d \"{\\\\\"displayName\\\\\":\\\\\"test\\\\\",\\\\\"title\\\\\":\\\\\"test\\\\\"}\")",
+      "Bash(docker compose *)",
+      "Bash(docker exec *)",
+      "Bash(node -e ' *)",
+      "Bash(pnpm --filter api tsc --noEmit)",
+      "Bash(pnpm --filter web tsc --noEmit)",
+      "Bash(pnpm dev *)",
+      "Bash(taskkill /F /IM node.exe)",
+      "Bash(Get-Process node *)",
+      "Bash(Stop-Process -Force)",
+      "PowerShell(Stop-Process -Force)",
+      "Bash(node -e \"import\\('tsx/dist/package.json', {assert:{type:'json'}}\\).then\\(m=>console.log\\(m.default.version\\)\\).catch\\(\\(\\)=>{}\\)\")",
+      "Bash(node --env-file=.env -e \"console.log\\('KEY:', process.env.ANTHROPIC_API_KEY?.slice\\(0,20\\)\\)\")",
+      "Bash(node -e \"require\\('dotenv'\\).config\\(\\); console.log\\('KEY:', process.env.ANTHROPIC_API_KEY?.slice\\(0,20\\)\\)\")",
+      "Bash(gh --version)",
+      "Bash(git config *)"
+    ]
+  }
+}

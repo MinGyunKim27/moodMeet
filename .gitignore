@@ -1,0 +1,11 @@
+node_modules/
+dist/
+.turbo/
+coverage/
+*.env
+*.env.local
+.DS_Store
+
+# 스펙 문서
+*.md
+!apps/
