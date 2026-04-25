@@ -8,6 +8,7 @@ import {
   ControlBar,
   useTracks,
   useLocalParticipant,
+  useRemoteParticipants,
 } from '@livekit/components-react'
 import '@livekit/components-styles'
 import { Track } from 'livekit-client'
@@ -106,10 +107,15 @@ function MeetingRoom({
   )
 
   const { localParticipant } = useLocalParticipant()
+  // 원격 참여자 목록 (LiveKit identity = participantId)
+  const remoteParticipants = useRemoteParticipants()
+
   const hiddenVideoRef = useRef<HTMLVideoElement>(null)
   const [roomMood, setRoomMood] = useState<AggregatedMood | null>(null)
   const [chatOpen, setChatOpen] = useState(false)
-  const [myWeight, setMyWeight] = useState(1)
+  const [weightPanelOpen, setWeightPanelOpen] = useState(false)
+  // 상대방별 가중치 (key: LiveKit identity = participantId)
+  const [peerWeights, setPeerWeights] = useState<Record<string, number>>({})
 
   const model = useMemo(() => new FaceApiModel(), [])
   const aggregator = useMemo(() => new LocalAggregator(), [])
@@ -119,7 +125,7 @@ function MeetingRoom({
     useSpeechRecognition('ko-KR')
 
   const getMood = useCallback(() => aggregator.current(), [aggregator])
-  const { setOnMoodUpdate, sendWeight } = useMoodReporter(meetingId, participantId, getMood, listening)
+  const { setOnMoodUpdate, sendPeerWeight } = useMoodReporter(meetingId, participantId, getMood, listening)
   useEffect(() => {
     setOnMoodUpdate((m) =>
       setRoomMood({ valence: m.valence, arousal: m.arousal, sampleCount: 1, bucketTs: Date.now() }),
@@ -137,11 +143,11 @@ function MeetingRoom({
     sentCountRef.current = finalTranscripts.length
   }, [finalTranscripts, meetingId, participantId])
 
-  // 가중치 변경 핸들러
-  const handleSetWeight = useCallback((w: number) => {
-    setMyWeight(w)
-    sendWeight(w)
-  }, [sendWeight])
+  // 특정 참여자 가중치 변경
+  const handleSetPeerWeight = useCallback((targetId: string, w: number) => {
+    setPeerWeights((prev) => ({ ...prev, [targetId]: w }))
+    sendPeerWeight(targetId, w)
+  }, [sendPeerWeight])
 
   // 회의 종료 (호스트)
   const [ending, setEnding] = useState(false)
@@ -201,23 +207,20 @@ function MeetingRoom({
           {meetingId}
         </button>
         <div className="flex items-center gap-2">
-          {/* 내 무드 가중치 */}
-          <div className="flex items-center gap-1" title="내 감정이 방 무드에 반영되는 강도">
-            <span className="text-neutral-600 text-xs">가중치</span>
-            {([1, 2, 3, 4, 5] as const).map((w) => (
-              <button
-                key={w}
-                onClick={() => handleSetWeight(w)}
-                className={`w-5 h-5 rounded text-xs font-medium transition-colors ${
-                  myWeight === w
-                    ? 'bg-neutral-500 text-white'
-                    : 'text-neutral-600 hover:text-neutral-300'
-                }`}
-              >
-                {w}
-              </button>
-            ))}
-          </div>
+          {/* 참여자 가중치 버튼 */}
+          {remoteParticipants.length > 0 && (
+            <button
+              onClick={() => setWeightPanelOpen((v) => !v)}
+              title="참여자별 무드 반영 강도 설정"
+              className={`text-xs px-2 py-1 rounded border transition-colors ${
+                weightPanelOpen
+                  ? 'border-violet-500 text-violet-400'
+                  : 'border-neutral-700 text-neutral-400 hover:border-neutral-500 hover:text-white'
+              }`}
+            >
+              ⚖ 가중치
+            </button>
+          )}
 
           {/* STT 버튼 */}
           {supported && (
@@ -269,6 +272,48 @@ function MeetingRoom({
           )}
         </div>
       </header>
+
+      {/* 가중치 패널 — 헤더 바로 아래 드롭다운 */}
+      {weightPanelOpen && remoteParticipants.length > 0 && (
+        <div className="px-4 py-3 border-b border-neutral-800 bg-neutral-950 shrink-0">
+          <p className="text-xs text-neutral-500 mb-2">
+            각 참여자의 무드가 내 무드 바에 반영되는 강도를 설정하세요 (0 = 제외, 5 = 최대)
+          </p>
+          <div className="flex flex-wrap gap-3">
+            {remoteParticipants.map((p) => {
+              const id = p.identity  // LiveKit identity = participantId
+              const name = p.name ?? id.slice(0, 8)
+              const weight = peerWeights[id] ?? 1
+              return (
+                <div key={id} className="flex items-center gap-2 bg-neutral-900 border border-neutral-800 rounded-lg px-3 py-1.5">
+                  <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-neutral-700 text-xs font-medium text-neutral-300 shrink-0">
+                    {name.slice(0, 1)}
+                  </span>
+                  <span className="text-xs text-neutral-300 max-w-[80px] truncate">{name}</span>
+                  <div className="flex items-center gap-0.5 ml-1">
+                    {([0, 1, 2, 3, 4, 5] as const).map((w) => (
+                      <button
+                        key={w}
+                        onClick={() => handleSetPeerWeight(id, w)}
+                        title={w === 0 ? '무드 제외' : `가중치 ${w}`}
+                        className={`w-5 h-5 rounded text-xs font-medium transition-colors ${
+                          weight === w
+                            ? w === 0
+                              ? 'bg-neutral-600 text-neutral-300'
+                              : 'bg-violet-600 text-white'
+                            : 'text-neutral-600 hover:text-neutral-300'
+                        }`}
+                      >
+                        {w}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
 
       {/* 본문: 비디오 영역 + 채팅 사이드바 */}
       <div className="flex flex-1 overflow-hidden">

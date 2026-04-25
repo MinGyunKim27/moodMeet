@@ -66,12 +66,12 @@ export function useMoodReporter(
   // isSpeaking 제거 → STT 토글해도 WS 재연결 안 함
   }, [meetingId, participantId, getMood])
 
-  // 내 무드 가중치 전송 (0~5, 기본 1)
-  const sendWeight = useCallback((weight: number) => {
+  // 특정 참여자의 가중치 설정 (내 시점에서 그 사람의 무드 반영 강도, 0~5)
+  const sendPeerWeight = useCallback((targetId: string, weight: number) => {
     const ws = wsRef.current
     if (!ws || ws.readyState !== WebSocket.OPEN || !participantId) return
-    ws.send(JSON.stringify({ type: 'set_weight', participantId, weight }))
+    ws.send(JSON.stringify({ type: 'set_peer_weight', participantId, targetId, weight }))
   }, [participantId])
 
-  return { setOnMoodUpdate, sendWeight }
+  return { setOnMoodUpdate, sendPeerWeight }
 }
