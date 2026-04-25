@@ -115,6 +115,9 @@ export async function meetingsRoute(app: FastifyInstance) {
     const userId = await newId('usr')
     const participantId = await newId('ptc')
 
+    let actualParticipantId = participantId
+    let actualRole: string = 'member'
+
     await sql.begin(async (tx) => {
       await tx`
         INSERT INTO users (id, email, display_name, locale, device_id)
@@ -134,10 +137,22 @@ export async function meetingsRoute(app: FastifyInstance) {
         UPDATE meetings SET status = 'live', started_at = now()
         WHERE id = ${meetingId} AND status = 'scheduled'
       `
+
+      // 실제 참여자 ID와 role 조회 (호스트가 새로고침해도 role 유지)
+      const ptcRows = await tx`
+        SELECT p.id, p.role FROM participants p
+        JOIN users u ON u.id = p.user_id
+        WHERE p.meeting_id = ${meetingId} AND u.device_id = ${deviceId}
+        LIMIT 1
+      `
+      if (ptcRows[0]) {
+        actualParticipantId = ptcRows[0]['id'] as string
+        actualRole = ptcRows[0]['role'] as string
+      }
     })
 
-    const token = await buildLiveKitToken(meetingId, participantId, displayName, 'member')
-    return { token, livekitUrl: LIVEKIT_URL, participantId, role: 'member' }
+    const token = await buildLiveKitToken(meetingId, actualParticipantId, displayName, actualRole)
+    return { token, livekitUrl: LIVEKIT_URL, participantId: actualParticipantId, role: actualRole }
   })
 
   // POST /api/meetings/:id/utterances — 발화 저장
@@ -217,6 +232,22 @@ export async function meetingsRoute(app: FastifyInstance) {
 
     reply.code(201)
     return { meetingId, hasSummary: true, summaryMd, generatedAt: new Date().toISOString() }
+  })
+
+  // GET /api/meetings/:id/mood-series — 무드 타임라인 데이터
+  app.get<{ Params: { id: string } }>('/:id/mood-series', async (req, _reply) => {
+    const rows = await sql`
+      SELECT
+        bucket_ts     AS "bucketTs",
+        valence_agg   AS "valence",
+        arousal_agg   AS "arousal",
+        hue,
+        sample_count  AS "sampleCount"
+      FROM mood_series
+      WHERE meeting_id = ${req.params.id}
+      ORDER BY bucket_ts ASC
+    `
+    return rows
   })
 
   // DELETE /api/meetings/:id — 미팅 종료

@@ -106,8 +106,16 @@ export async function moodRoute(app: FastifyInstance) {
 
       socket.on('message', (raw: Buffer) => {
         try {
-          const payload = JSON.parse(raw.toString()) as MoodPayload
+          const payload = JSON.parse(raw.toString()) as MoodPayload & { type?: string; weight?: number }
           if (payload.participantId !== participantId) return
+
+          // 가중치 변경 메시지
+          if (payload.type === 'set_weight') {
+            const w = Math.min(5, Math.max(0, Number(payload.weight) || 1))
+            const c = room.clients.get(participantId)
+            if (c) c.weight = w
+            return
+          }
 
           room.latestMood.set(participantId, {
             valence: payload.valenceAvg,

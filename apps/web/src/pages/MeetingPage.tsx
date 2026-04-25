@@ -109,6 +109,7 @@ function MeetingRoom({
   const hiddenVideoRef = useRef<HTMLVideoElement>(null)
   const [roomMood, setRoomMood] = useState<AggregatedMood | null>(null)
   const [chatOpen, setChatOpen] = useState(false)
+  const [myWeight, setMyWeight] = useState(1)
 
   const model = useMemo(() => new FaceApiModel(), [])
   const aggregator = useMemo(() => new LocalAggregator(), [])
@@ -118,7 +119,7 @@ function MeetingRoom({
     useSpeechRecognition('ko-KR')
 
   const getMood = useCallback(() => aggregator.current(), [aggregator])
-  const { setOnMoodUpdate } = useMoodReporter(meetingId, participantId, getMood, listening)
+  const { setOnMoodUpdate, sendWeight } = useMoodReporter(meetingId, participantId, getMood, listening)
   useEffect(() => {
     setOnMoodUpdate((m) =>
       setRoomMood({ valence: m.valence, arousal: m.arousal, sampleCount: 1, bucketTs: Date.now() }),
@@ -135,6 +136,12 @@ function MeetingRoom({
     })
     sentCountRef.current = finalTranscripts.length
   }, [finalTranscripts, meetingId, participantId])
+
+  // 가중치 변경 핸들러
+  const handleSetWeight = useCallback((w: number) => {
+    setMyWeight(w)
+    sendWeight(w)
+  }, [sendWeight])
 
   // 회의 종료 (호스트)
   const [ending, setEnding] = useState(false)
@@ -194,6 +201,24 @@ function MeetingRoom({
           {meetingId}
         </button>
         <div className="flex items-center gap-2">
+          {/* 내 무드 가중치 */}
+          <div className="flex items-center gap-1" title="내 감정이 방 무드에 반영되는 강도">
+            <span className="text-neutral-600 text-xs">가중치</span>
+            {([1, 2, 3, 4, 5] as const).map((w) => (
+              <button
+                key={w}
+                onClick={() => handleSetWeight(w)}
+                className={`w-5 h-5 rounded text-xs font-medium transition-colors ${
+                  myWeight === w
+                    ? 'bg-neutral-500 text-white'
+                    : 'text-neutral-600 hover:text-neutral-300'
+                }`}
+              >
+                {w}
+              </button>
+            ))}
+          </div>
+
           {/* STT 버튼 */}
           {supported && (
             <button

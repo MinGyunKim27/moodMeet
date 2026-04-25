@@ -41,6 +41,14 @@ export interface UtteranceItem {
   startedAt: string
 }
 
+export interface MoodSeriesPoint {
+  bucketTs: string
+  valence: number
+  arousal: number
+  hue: number
+  sampleCount: number
+}
+
 export const api = {
   createMeeting: (displayName: string, deviceId: string, title?: string) =>
     request<{ meeting: { id: string }; participantId: string; role: 'host'; token: string; livekitUrl: string; joinUrl: string }>('/meetings', {
@@ -77,4 +85,7 @@ export const api = {
 
   getUtterances: (meetingId: string) =>
     request<UtteranceItem[]>(`/meetings/${meetingId}/utterances`),
+
+  getMoodSeries: (meetingId: string) =>
+    request<MoodSeriesPoint[]>(`/meetings/${meetingId}/mood-series`),
 }

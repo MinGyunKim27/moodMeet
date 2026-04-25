@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
-import { api, type SummaryData, type UtteranceItem } from '../lib/api'
+import { api, type SummaryData, type UtteranceItem, type MoodSeriesPoint } from '../lib/api'
 
-type Tab = 'summary' | 'transcript'
+type Tab = 'summary' | 'transcript' | 'mood'
 
 function renderMarkdown(md: string): string {
   return md
@@ -19,11 +19,178 @@ function formatTime(iso: string) {
   return new Date(iso).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
 }
 
+// valence(0~1) → 색상: 0=빨강, 0.5=노랑, 1=초록
+function valenceColor(v: number): string {
+  const clamped = Math.max(0, Math.min(1, v))
+  if (clamped >= 0.5) {
+    // 0.5~1 → 노랑→초록
+    const t = (clamped - 0.5) * 2
+    const r = Math.round(255 * (1 - t))
+    const g = Math.round(200 + 55 * t)
+    return `rgb(${r},${g},60)`
+  } else {
+    // 0~0.5 → 빨강→노랑
+    const t = clamped * 2
+    const r = 230
+    const g = Math.round(80 * t)
+    return `rgb(${r},${g},60)`
+  }
+}
+
+interface MoodChartProps {
+  series: MoodSeriesPoint[]
+}
+
+function MoodChart({ series }: MoodChartProps) {
+  if (series.length === 0) {
+    return (
+      <div className="text-center py-12">
+        <p className="text-neutral-500 text-sm">무드 데이터가 없습니다</p>
+        <p className="text-neutral-600 text-xs mt-1">회의 중 표정 분석이 활성화된 경우에만 기록됩니다</p>
+      </div>
+    )
+  }
+
+  const W = 560
+  const H = 140
+  const PAD = { top: 16, right: 16, bottom: 28, left: 36 }
+  const innerW = W - PAD.left - PAD.right
+  const innerH = H - PAD.top - PAD.bottom
+
+  const minTs = new Date(series[0]!.bucketTs).getTime()
+  const maxTs = new Date(series[series.length - 1]!.bucketTs).getTime()
+  const tRange = maxTs - minTs || 1
+
+  const toX = (ts: string) =>
+    PAD.left + ((new Date(ts).getTime() - minTs) / tRange) * innerW
+  const toY = (v: number) =>
+    PAD.top + (1 - Math.max(0, Math.min(1, v))) * innerH
+
+  // polyline points
+  const valencePoints = series.map((p) => `${toX(p.bucketTs)},${toY(p.valence)}`).join(' ')
+  const arousalPoints = series.map((p) => `${toX(p.bucketTs)},${toY(p.arousal)}`).join(' ')
+
+  // 평균 valence
+  const avgValence = series.reduce((s, p) => s + p.valence, 0) / series.length
+
+  // 시간 축 레이블 (최대 4개)
+  const labelCount = Math.min(4, series.length)
+  const labelIndices = Array.from({ length: labelCount }, (_, i) =>
+    Math.round((i / (labelCount - 1 || 1)) * (series.length - 1)),
+  )
+
+  return (
+    <div>
+      {/* 평균 감정 뱃지 */}
+      <div className="flex items-center gap-2 mb-3">
+        <span className="text-xs text-neutral-500">회의 평균 무드</span>
+        <span
+          className="text-xs font-semibold px-2 py-0.5 rounded-full"
+          style={{ backgroundColor: valenceColor(avgValence) + '33', color: valenceColor(avgValence) }}
+        >
+          {avgValence >= 0.65 ? '긍정적' : avgValence >= 0.45 ? '중립' : '부정적'}
+          {' '}({(avgValence * 100).toFixed(0)}%)
+        </span>
+        <span className="text-xs text-neutral-600">{series.length}개 버킷</span>
+      </div>
+
+      {/* SVG 차트 */}
+      <div className="overflow-x-auto">
+        <svg
+          viewBox={`0 0 ${W} ${H}`}
+          width="100%"
+          style={{ maxWidth: W, display: 'block' }}
+          aria-label="회의 중 무드 변화 그래프"
+        >
+          {/* 배경 구역 — 긍정(상)/부정(하) */}
+          <rect x={PAD.left} y={PAD.top} width={innerW} height={innerH / 2}
+            fill="rgba(74,222,128,0.04)" />
+          <rect x={PAD.left} y={PAD.top + innerH / 2} width={innerW} height={innerH / 2}
+            fill="rgba(248,113,113,0.04)" />
+
+          {/* 중립선 */}
+          <line
+            x1={PAD.left} y1={PAD.top + innerH / 2}
+            x2={PAD.left + innerW} y2={PAD.top + innerH / 2}
+            stroke="#404040" strokeWidth={1} strokeDasharray="4 3"
+          />
+
+          {/* Y 축 레이블 */}
+          <text x={PAD.left - 4} y={PAD.top + 4} textAnchor="end" fill="#525252" fontSize={9}>긍정</text>
+          <text x={PAD.left - 4} y={PAD.top + innerH / 2 + 4} textAnchor="end" fill="#525252" fontSize={9}>중립</text>
+          <text x={PAD.left - 4} y={PAD.top + innerH + 2} textAnchor="end" fill="#525252" fontSize={9}>부정</text>
+
+          {/* Arousal 선 (보조, 흐릿하게) */}
+          <polyline
+            points={arousalPoints}
+            fill="none"
+            stroke="#525252"
+            strokeWidth={1}
+            strokeDasharray="3 3"
+            opacity={0.5}
+          />
+
+          {/* Valence 선 (메인) */}
+          <polyline
+            points={valencePoints}
+            fill="none"
+            stroke={valenceColor(avgValence)}
+            strokeWidth={2}
+            strokeLinejoin="round"
+            strokeLinecap="round"
+          />
+
+          {/* 데이터 포인트 원 */}
+          {series.map((p, i) => (
+            <circle
+              key={i}
+              cx={toX(p.bucketTs)}
+              cy={toY(p.valence)}
+              r={series.length > 30 ? 1.5 : 3}
+              fill={valenceColor(p.valence)}
+            />
+          ))}
+
+          {/* X 축 시간 레이블 */}
+          {labelIndices.map((idx) => {
+            const p = series[idx]!
+            return (
+              <text
+                key={idx}
+                x={toX(p.bucketTs)}
+                y={H - 4}
+                textAnchor="middle"
+                fill="#525252"
+                fontSize={9}
+              >
+                {new Date(p.bucketTs).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}
+              </text>
+            )
+          })}
+        </svg>
+      </div>
+
+      {/* 범례 */}
+      <div className="flex items-center gap-4 mt-2">
+        <div className="flex items-center gap-1.5">
+          <span className="inline-block w-5 h-0.5 rounded" style={{ backgroundColor: valenceColor(avgValence) }} />
+          <span className="text-xs text-neutral-500">감정 (valence)</span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <span className="inline-block w-5 h-0.5 rounded bg-neutral-600 opacity-50" />
+          <span className="text-xs text-neutral-600">각성도 (arousal)</span>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export function SummaryPage() {
   const { meetingId } = useParams<{ meetingId: string }>()
   const [tab, setTab] = useState<Tab>('summary')
   const [data, setData] = useState<SummaryData | null>(null)
   const [utterances, setUtterances] = useState<UtteranceItem[]>([])
+  const [moodSeries, setMoodSeries] = useState<MoodSeriesPoint[]>([])
   const [loading, setLoading] = useState(true)
   const [generating, setGenerating] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -34,8 +201,13 @@ export function SummaryPage() {
     Promise.all([
       api.getSummary(meetingId),
       api.getUtterances(meetingId),
+      api.getMoodSeries(meetingId),
     ])
-      .then(([summary, utts]) => { setData(summary); setUtterances(utts) })
+      .then(([summary, utts, moods]) => {
+        setData(summary)
+        setUtterances(utts)
+        setMoodSeries(moods)
+      })
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false))
   }, [meetingId])
@@ -96,6 +268,12 @@ export function SummaryPage() {
               >
                 전체 발화 {utterances.length > 0 && <span className="ml-1 text-xs text-neutral-500">({utterances.length})</span>}
               </button>
+              <button
+                onClick={() => setTab('mood')}
+                className={`flex-1 rounded-md py-2 text-sm font-medium transition-colors ${tab === 'mood' ? 'bg-neutral-700 text-white' : 'text-neutral-500 hover:text-neutral-300'}`}
+              >
+                무드 흐름 {moodSeries.length > 0 && <span className="ml-1 text-xs text-neutral-500">({moodSeries.length})</span>}
+              </button>
             </div>
 
             {/* AI 요약 탭 */}
@@ -148,7 +326,6 @@ export function SummaryPage() {
                   <ul className="divide-y divide-neutral-800">
                     {utterances.map((u, i) => (
                       <li key={i} className="px-5 py-3 flex gap-3">
-                        {/* 이름 뱃지 */}
                         <div className="shrink-0 mt-0.5">
                           <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-neutral-800 text-xs font-medium text-neutral-300">
                             {u.displayName.slice(0, 1)}
@@ -165,6 +342,13 @@ export function SummaryPage() {
                     ))}
                   </ul>
                 )}
+              </div>
+            )}
+
+            {/* 무드 흐름 탭 */}
+            {tab === 'mood' && (
+              <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-5">
+                <MoodChart series={moodSeries} />
               </div>
             )}
           </>
