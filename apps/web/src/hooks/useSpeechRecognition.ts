@@ -59,7 +59,7 @@ export function useSpeechRecognition(lang = 'ko-KR') {
       listeningRef.current = false
       rec.onend = null
       rec.onerror = null
-      try { rec.abort() } catch { /* ignore */ }
+      try { rec.stop() } catch { /* ignore */ }
     }
   }, [lang])
 
